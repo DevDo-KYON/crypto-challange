@@ -1,17 +1,19 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { ChevronLeft, AlertCircle } from "lucide-react";
+import { List, AlertCircle } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { WatchlistButton } from "@/components/WatchlistButton";
+import { NavigationButton } from "@/components/NavigationButton";
 import { updateCoinDescriptionInCache } from "@/lib/cache";
+import { getAdjacentCoins } from "@/lib/navigation";
 import { formatPrice, formatChange, formatMarketCap } from "@/lib/formatters";
-import type { CoinDetail } from "@/lib/types";
+import type { CoinDetail, Coin } from "@/lib/types";
 
 interface CoinDetailContentProps {
   coin: CoinDetail;
@@ -20,12 +22,36 @@ interface CoinDetailContentProps {
 }
 
 export function CoinDetailContent({ coin, coinId, isCached = false }: CoinDetailContentProps) {
+  const [adjacentCoins, setAdjacentCoins] = useState<{
+    previous: (Coin & { rank: number }) | null;
+    next: (Coin & { rank: number }) | null;
+  }>({ previous: null, next: null });
+  const [loadingNavigation, setLoadingNavigation] = useState(true);
+
   // Save description to cache when we have fresh data (not cached)
   useEffect(() => {
     if (!isCached && coin.description.en) {
       updateCoinDescriptionInCache(coin);
     }
   }, [coin, isCached]);
+
+  // Load adjacent coins for navigation
+  useEffect(() => {
+    async function loadAdjacentCoins() {
+      setLoadingNavigation(true);
+      try {
+        const adjacent = await getAdjacentCoins(coinId);
+        setAdjacentCoins(adjacent);
+      } catch (error) {
+        // If fails, set both to null
+        setAdjacentCoins({ previous: null, next: null });
+      } finally {
+        setLoadingNavigation(false);
+      }
+    }
+
+    loadAdjacentCoins();
+  }, [coinId]);
 
   const isPositive = coin.market_data.price_change_percentage_24h >= 0;
   const rawDescription = coin.description.en || "No description available.";
@@ -82,7 +108,7 @@ export function CoinDetailContent({ coin, coinId, isCached = false }: CoinDetail
             </div>
             <Link href="/">
               <Button variant="outline">
-                <ChevronLeft className="h-4 w-4 mr-1" />
+                <List className="h-4 w-4 mr-1" />
                 Back to list
               </Button>
             </Link>
@@ -138,6 +164,30 @@ export function CoinDetailContent({ coin, coinId, isCached = false }: CoinDetail
           </div>
         </CardContent>
       </Card>
+
+      {/* Navigation buttons */}
+      {(adjacentCoins.previous || adjacentCoins.next) && (
+        <div className="flex items-center justify-between gap-4 mt-6">
+          {adjacentCoins.previous ? (
+            <NavigationButton
+              coin={adjacentCoins.previous}
+              direction="previous"
+              disabled={loadingNavigation}
+            />
+          ) : (
+            <div /> // Placeholder to maintain spacing
+          )}
+          {adjacentCoins.next ? (
+            <NavigationButton
+              coin={adjacentCoins.next}
+              direction="next"
+              disabled={loadingNavigation}
+            />
+          ) : (
+            <div /> // Placeholder to maintain spacing
+          )}
+        </div>
+      )}
     </main>
   );
 }
